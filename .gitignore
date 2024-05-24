@@ -9,6 +9,7 @@ Build
 .git
 .idea
 .vscode
+.vsconfig
 .vs
 *.VC.db
 *.opensdf
