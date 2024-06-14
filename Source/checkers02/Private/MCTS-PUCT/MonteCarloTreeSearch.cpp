@@ -30,11 +30,14 @@ void UMonteCarloTreeSearch::Init(const FString& Board, const TObjectPtr<UChecker
 
 void UMonteCarloTreeSearch::ExpandRoot(const TArray<FString>& NextPossibleBoards) const
 {
+	RootNode->Children.Reserve(NextPossibleBoards.Num());
 	for (const FString& Board : NextPossibleBoards)
 	{
-		TObjectPtr<USearchNode> Node = NewObject<USearchNode>();
-		Node->Init(Board, !RootNode->bIsPlayer1, 0, 0, RootNode);
-		RootNode->Children.Emplace(Node);
+		if (TObjectPtr<USearchNode> Node = NewObject<USearchNode>())
+		{
+			Node->Init(Board, !RootNode->bIsPlayer1, 0, 0, RootNode);
+			RootNode->Children.Emplace(Node);
+		}
 	}
 }
 
@@ -43,7 +46,7 @@ FString UMonteCarloTreeSearch::ChooseNextBoard() const
 	while (HasTimeToThink() && HasMoreIterations())
 	{
 		const TObjectPtr<USearchNode> NodeToVisit = SelectNode(RootNode, SimulationRules);
-		if (NodeToVisit->Depth < SimDepthLimit)
+		if (NodeToVisit->Depth < TreeDepthLimit)
 		{
 			Expand(NodeToVisit, SimulationRules);
 			for (const TObjectPtr<USearchNode> Child : NodeToVisit->Children)

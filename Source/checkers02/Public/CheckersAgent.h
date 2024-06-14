@@ -10,7 +10,7 @@
 class UMonteCarloTreeSearch;
 class ACheckersGame;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FReceiveChosenMoves, uint8, OriginIndex, const TArray<uint8>&, MoveIndices);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FReceiveChosenMoves, uint8, OriginIndex, const uint8, ChosenMovesIndex);
 
 /**
  * An AI agent that has the logic to begin and continue playing a checkers game. 
@@ -29,7 +29,8 @@ public:
 	void ChooseNextMoves();
 	
 	UFUNCTION(BlueprintCallable, BlueprintPure)
-	static AActor* FindNearestActorIndex(FVector Origin, const TArray<AActor*>& ActorsToCheck, int32& NearestActorIndex);
+	static void FindNearestActorIndex(FVector Origin, const TArray<AActor*>& ActorsToCheck,
+		int32& NearestActorIndex, AActor*& NearestActor);
 
 private:
 	UPROPERTY(BlueprintAssignable, meta=(AllowPrivateAccess="true"))
@@ -50,6 +51,7 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
 	int32 WinCount;
 
-	uint8 Origin;
-	TArray<uint8> Movements;
+	uint8 PieceOrigin;
+	uint8 ChosenMovesIndex;
+	bool bIsRunning;
 };

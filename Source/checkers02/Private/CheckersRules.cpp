@@ -3,11 +3,20 @@
 
 #include "CheckersRules.h"
 
-bool UCheckersRules::GenerateNextPossibleBoards(const FString& Board, const bool IsPlayer1)
+void UCheckersRules::ResetMembers()
 {
 	NextPossibleBoards.Reset();
 	PossibleTurnMovements.Reset();
+	PossibleTurnCaptures.Reset();
+	TransitionMoves.ActionIndices.Reset();
+	JumpedOpponents.ActionIndices.Reset();
+	PossibleOrigins.Reset();
 	Winner = EWinner::ENone;
+}
+
+bool UCheckersRules::GenerateNextPossibleBoards(const FString& Board, const bool IsPlayer1)
+{
+	ResetMembers();
 
 	const TCHAR PlayerPawn = IsPlayer1 ? Man : Woman;
 	const TCHAR PlayerRoyal = IsPlayer1 ? King : Queen;
@@ -27,12 +36,82 @@ bool UCheckersRules::GenerateNextPossibleBoards(const FString& Board, const bool
 	{
 		return true;
 	}
-	// Else whoever played last, opposite of current, won.
+	// Whoever played last, opposite of current, won.
 	Winner = IsPlayer1? EWinner::EPlayer2 : EWinner::EPlayer1;
 	return false;
 }
 
-bool UCheckersRules::IsJumpPossibleOnBoard(const FString& Board, const bool IsPlayer1, const TCHAR PlayerPawn, const TCHAR PlayerRoyal, const TCHAR OpponentPawn, const TCHAR OpponentRoyal)
+bool UCheckersRules::GenerateNextPossibleBoardsForPiece(const FString& Board, const bool bIsPlayer1,
+	const int32 PieceIndex, bool& bHasCapture)
+{
+	ResetMembers();
+	bHasCapture = false;
+
+	const TCHAR PlayerPawn = bIsPlayer1 ? Man : Woman;
+	const TCHAR PlayerRoyal = bIsPlayer1 ? King : Queen;
+	const TCHAR OpponentPawn = bIsPlayer1 ? Woman : Man;
+	const TCHAR OpponentRoyal = bIsPlayer1 ? Queen : King;
+
+	if (IsJumpPossibleForPiece(Board, bIsPlayer1, PieceIndex, PlayerRoyal, OpponentPawn, OpponentRoyal))
+	{
+		GenerateNextJumpBoardsForPiece(Board, PieceIndex, bIsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+		bHasCapture = true;
+	}
+	else if (!IsJumpPossibleOnBoard(Board, bIsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal))
+	{
+		GenerateNextAdjacentMovesForPiece(Board, bIsPlayer1, PlayerPawn, PlayerRoyal, PieceIndex);
+	}
+	
+	if (NextPossibleBoards.Num() > 0)
+	{
+		return true;
+	}
+	return false;
+}
+
+bool UCheckersRules::GenerateNextPossibleOrigins(const FString& Board, const bool bIsPlayer1)
+{
+	ResetMembers();
+
+	const TCHAR PlayerPawn = bIsPlayer1 ? Man : Woman;
+	const TCHAR PlayerRoyal = bIsPlayer1 ? King : Queen;
+	const TCHAR OpponentPawn = bIsPlayer1 ? Woman : Man;
+	const TCHAR OpponentRoyal = bIsPlayer1 ? Queen : King;
+
+	if (IsJumpPossibleOnBoard(Board, bIsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal))
+	{
+		for (uint8 Index = 0; Index < BoardCellCount; Index++)
+		{
+			if (Board[Index] == PlayerPawn || Board[Index] == PlayerRoyal)
+			{
+				if (IsJumpPossibleForPiece(Board, bIsPlayer1, Index, PlayerRoyal, OpponentPawn, OpponentRoyal))
+				{
+					PossibleOrigins.Emplace(Index);		
+				}
+			}
+		}
+	}
+	else
+	{
+		for (uint8 Index = 0; Index < BoardCellCount; Index++)
+		{
+			if (Board[Index] == PlayerPawn || Board[Index] == PlayerRoyal)
+			{
+				if (IsAdjacentMovePossibleForPiece(Board, bIsPlayer1, Index, PlayerRoyal))
+				{
+					PossibleOrigins.Emplace(Index);	
+				}
+			}
+		}
+	}
+	if (PossibleOrigins.Num() > 0)
+	{
+		return true;
+	}
+	return false;
+}
+
+bool UCheckersRules::IsJumpPossibleOnBoard(const FString& Board, const bool bIsPlayer1, const TCHAR PlayerPawn, const TCHAR PlayerRoyal, const TCHAR OpponentPawn, const TCHAR OpponentRoyal)
 {    
    for (uint8 Index = 0; Index < BoardCellCount; Index++)
    {
@@ -40,10 +119,10 @@ bool UCheckersRules::IsJumpPossibleOnBoard(const FString& Board, const bool IsPl
       if (Board[Index] == PlayerPawn || Board[Index] == PlayerRoyal)
       {
          // Calculate forward Indexes near piece
-         const uint8 FwdLeftIndex = IsPlayer1 ? NorthWestGet(Index) : SouthEastGet(Index);
-         const uint8 FwdRightIndex = IsPlayer1 ? NorthEastGet(Index) : SouthWestGet(Index);
-         const uint8 FwdLeftJumpIndex = IsPlayer1 ? NorthWestJumpGet(Index) : SouthEastJumpGet(Index);
-         const uint8 FwdRightJumpIndex = IsPlayer1 ? NorthEastJumpGet(Index) : SouthWestJumpGet(Index);
+         const uint8 FwdLeftIndex = bIsPlayer1 ? NorthWestGet(Index) : SouthEastGet(Index);
+         const uint8 FwdRightIndex = bIsPlayer1 ? NorthEastGet(Index) : SouthWestGet(Index);
+         const uint8 FwdLeftJumpIndex = bIsPlayer1 ? NorthWestJumpGet(Index) : SouthEastJumpGet(Index);
+         const uint8 FwdRightJumpIndex = bIsPlayer1 ? NorthEastJumpGet(Index) : SouthWestJumpGet(Index);
          // Check for forward left jumps
          if (FwdLeftIndex != OffBoard && FwdLeftJumpIndex != OffBoard &&
             Board[FwdLeftJumpIndex] == Empty &&
@@ -63,10 +142,10 @@ bool UCheckersRules::IsJumpPossibleOnBoard(const FString& Board, const bool IsPl
          if (Board[Index] == PlayerRoyal)
          {
             // Calculate backward cells near the piece
-            const uint8 BackLeftIndex = IsPlayer1 ? SouthWestGet(Index) : NorthEastGet(Index);
-            const uint8 BackRightIndex = IsPlayer1 ? SouthEastGet(Index) : NorthWestGet(Index);
-            const uint8 BackLeftJumpIndex = IsPlayer1 ? SouthWestJumpGet(Index) : NorthEastJumpGet(Index);
-            const uint8 BackRightJumpIndex = IsPlayer1 ? SouthEastJumpGet(Index) : NorthWestJumpGet(Index);
+            const uint8 BackLeftIndex = bIsPlayer1 ? SouthWestGet(Index) : NorthEastGet(Index);
+            const uint8 BackRightIndex = bIsPlayer1 ? SouthEastGet(Index) : NorthWestGet(Index);
+            const uint8 BackLeftJumpIndex = bIsPlayer1 ? SouthWestJumpGet(Index) : NorthEastJumpGet(Index);
+            const uint8 BackRightJumpIndex = bIsPlayer1 ? SouthEastJumpGet(Index) : NorthWestJumpGet(Index);
             // Check for back left jumps
             if (BackLeftIndex != OffBoard && BackLeftJumpIndex != OffBoard &&
                Board[BackLeftJumpIndex] == Empty &&
@@ -140,15 +219,54 @@ bool UCheckersRules::IsJumpPossibleForPiece(const FString& Board, const bool IsP
     return false;
 }
 
+bool UCheckersRules::IsAdjacentMovePossibleForPiece(const FString& Board, const bool IsPlayer1, const uint8 PieceIndex,
+                                                    const TCHAR PlayerRoyal)
+{
+	// Calculate forward Indexes near piece
+	const uint8 FwdLeftIndex = IsPlayer1 ? NorthWestGet(PieceIndex) : SouthEastGet(PieceIndex);
+    const uint8 FwdRightIndex = IsPlayer1 ? NorthEastGet(PieceIndex) : SouthWestGet(PieceIndex);
+    // Check for a forward left adjacent move
+    if (FwdLeftIndex != OffBoard && 
+        Board[FwdLeftIndex] == Empty)
+    {
+        return true;
+    }
+    // Check for a forward right adjacent move
+    if (FwdRightIndex != OffBoard &&
+        Board[FwdRightIndex] == Empty)
+    {
+        return true;
+    }
+    if (Board[PieceIndex] == PlayerRoyal)
+    {
+        // Calculate backward cells near the piece
+        const uint8 BackLeftIndex = IsPlayer1 ? SouthWestGet(PieceIndex) : NorthEastGet(PieceIndex);
+        const uint8 BackRightIndex = IsPlayer1 ? SouthEastGet(PieceIndex) : NorthWestGet(PieceIndex);
+        // Check for a back left adjacent move
+        if (BackLeftIndex != OffBoard && 
+            Board[BackLeftIndex] == Empty)
+        {
+            return true;
+        }
+        // Check for a back right adjacent move
+        if (BackRightIndex != OffBoard && 
+            Board[BackRightIndex] == Empty)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void UCheckersRules::EmplaceAllJumpMoves(const FString& Board, const bool IsPlayer1, const TCHAR PlayerPawn, const TCHAR PlayerRoyal, const TCHAR OpponentPawn, const TCHAR OpponentRoyal) {
 	for (uint8 Index = 0; Index < BoardCellCount; Index++) {
 		if (Board[Index] == PlayerPawn || Board[Index] == PlayerRoyal) {
-			GenerateNextJumpBoards(Board, Index, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+			GenerateNextJumpBoardsForPiece(Board, Index, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
 		}
 	}
 }
 
-void UCheckersRules::GenerateNextJumpBoards(const FString& Board, const uint8 PieceIndex, const bool IsPlayer1, const TCHAR PlayerPawn,
+void UCheckersRules::GenerateNextJumpBoardsForPiece(const FString& Board, const uint8 PieceIndex, const bool IsPlayer1, const TCHAR PlayerPawn,
 	const TCHAR PlayerRoyal, const TCHAR OpponentPawn, const TCHAR OpponentRoyal)
 {
 	// Calculate forward Indexes near piece
@@ -165,21 +283,23 @@ void UCheckersRules::GenerateNextJumpBoards(const FString& Board, const uint8 Pi
         // Get a new board from jumping the opponent's piece
     	bool OutPieceWasPromoted;
         FString NewBoard = Board;
-    	AssignNewBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,FwdLeftJumpIndex, FwdLeftIndex);
+    	UpdateBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,FwdLeftJumpIndex, FwdLeftIndex);
     	
     	// Continue jumping if possible, or if terminal, add the new board
         if (!OutPieceWasPromoted &&
         	IsJumpPossibleForPiece(NewBoard, IsPlayer1, FwdLeftJumpIndex, PlayerRoyal, OpponentPawn, OpponentRoyal))
         {
-            TransitionMoves.MoveIndices.Emplace(FwdLeftJumpIndex);
-            GenerateNextJumpBoards(NewBoard, FwdLeftJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+            TransitionMoves.ActionIndices.Emplace(FwdLeftJumpIndex);
+            GenerateNextJumpBoardsForPiece(NewBoard, FwdLeftJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
         }
         else
         {
-            TransitionMoves.MoveIndices.Emplace(FwdLeftJumpIndex);
-            PossibleTurnMovements.Add(TransitionMoves);
+            TransitionMoves.ActionIndices.Emplace(FwdLeftJumpIndex);
+            PossibleTurnMovements.Emplace(TransitionMoves);
+        	PossibleTurnCaptures.Emplace(JumpedOpponents);
             NextPossibleBoards.Emplace(NewBoard);
-            TransitionMoves.MoveIndices.Reset();
+            TransitionMoves.ActionIndices.Reset();
+        	JumpedOpponents.ActionIndices.Reset();
         }
     }
     // Check for a forward right jump
@@ -191,21 +311,23 @@ void UCheckersRules::GenerateNextJumpBoards(const FString& Board, const uint8 Pi
     	// Get a new board from jumping the opponent's piece
     	bool OutPieceWasPromoted;
     	FString NewBoard = Board;
-    	AssignNewBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,FwdRightJumpIndex, FwdRightIndex);
+    	UpdateBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,FwdRightJumpIndex, FwdRightIndex);
     	
     	// Continue jumping if possible, or if terminal, add the new board
         if (!OutPieceWasPromoted &&
         	IsJumpPossibleForPiece(NewBoard, IsPlayer1, FwdRightJumpIndex, PlayerRoyal, OpponentPawn, OpponentRoyal))
         {
-            TransitionMoves.MoveIndices.Emplace(FwdRightJumpIndex);
-            GenerateNextJumpBoards(NewBoard, FwdRightJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+            TransitionMoves.ActionIndices.Emplace(FwdRightJumpIndex);
+            GenerateNextJumpBoardsForPiece(NewBoard, FwdRightJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
         }
         else
         {
-            TransitionMoves.MoveIndices.Emplace(FwdRightJumpIndex);
+            TransitionMoves.ActionIndices.Emplace(FwdRightJumpIndex);
             PossibleTurnMovements.Emplace(TransitionMoves);
+        	PossibleTurnCaptures.Emplace(JumpedOpponents);
             NextPossibleBoards.Emplace(NewBoard);
-            TransitionMoves.MoveIndices.Reset();
+            TransitionMoves.ActionIndices.Reset();
+        	JumpedOpponents.ActionIndices.Reset();
         }
     }
     // Check if the piece is a king 
@@ -225,21 +347,23 @@ void UCheckersRules::GenerateNextJumpBoards(const FString& Board, const uint8 Pi
         	// Get a new board from jumping the opponent's piece
         	bool OutPieceWasPromoted;
         	FString NewBoard = Board;
-        	AssignNewBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,BackLeftJumpIndex, BackLeftIndex);
+        	UpdateBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,BackLeftJumpIndex, BackLeftIndex);
   	
             // Continue jumping if possible, or if terminal, add the new board
             if (!OutPieceWasPromoted &&
             	IsJumpPossibleForPiece(NewBoard, IsPlayer1, BackLeftJumpIndex, PlayerRoyal, OpponentPawn, OpponentRoyal))
             {
-                TransitionMoves.MoveIndices.Emplace(BackLeftJumpIndex);
-                GenerateNextJumpBoards(NewBoard, BackLeftJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+                TransitionMoves.ActionIndices.Emplace(BackLeftJumpIndex);
+                GenerateNextJumpBoardsForPiece(NewBoard, BackLeftJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
             }
             else
             {
-                TransitionMoves.MoveIndices.Emplace(BackLeftJumpIndex);
+                TransitionMoves.ActionIndices.Emplace(BackLeftJumpIndex);
                 PossibleTurnMovements.Emplace(TransitionMoves);
+            	PossibleTurnCaptures.Emplace(JumpedOpponents);
                 NextPossibleBoards.Emplace(NewBoard);
-                TransitionMoves.MoveIndices.Reset();
+                TransitionMoves.ActionIndices.Reset();
+            	JumpedOpponents.ActionIndices.Reset();
             }
         }
         // Check for a back right jump
@@ -251,89 +375,102 @@ void UCheckersRules::GenerateNextJumpBoards(const FString& Board, const uint8 Pi
         	// Get a new board from jumping the opponent's piece
         	bool OutPieceWasPromoted;
         	FString NewBoard = Board;
-        	AssignNewBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,BackLeftJumpIndex, BackLeftIndex);
+        	UpdateBoardFromMove(NewBoard, OutPieceWasPromoted, PieceIndex,BackRightJumpIndex, BackRightIndex);
 
             // Continue jumping if possible, or if terminal, add the new board
             if (!OutPieceWasPromoted &&
             	IsJumpPossibleForPiece(NewBoard, IsPlayer1, BackRightJumpIndex, PlayerRoyal, OpponentPawn, OpponentRoyal))
             {
-                TransitionMoves.MoveIndices.Emplace(BackRightJumpIndex);
-                GenerateNextJumpBoards(NewBoard, BackRightJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
+                TransitionMoves.ActionIndices.Emplace(BackRightJumpIndex);
+                GenerateNextJumpBoardsForPiece(NewBoard, BackRightJumpIndex, IsPlayer1, PlayerPawn, PlayerRoyal, OpponentPawn, OpponentRoyal);
             }
             else
             {
-                TransitionMoves.MoveIndices.Emplace(BackRightJumpIndex);
+                TransitionMoves.ActionIndices.Emplace(BackRightJumpIndex);
                 PossibleTurnMovements.Emplace(TransitionMoves);
+            	PossibleTurnCaptures.Emplace(JumpedOpponents);
                 NextPossibleBoards.Emplace(NewBoard);
-                TransitionMoves.MoveIndices.Reset();
+                TransitionMoves.ActionIndices.Reset();
+            	JumpedOpponents.ActionIndices.Reset();
             }
         }
     }
 }
 
-void UCheckersRules::EmplaceAllAdjacentMoves(const FString& Board, const bool IsPlayer1, const TCHAR PlayerPawn,
-	const TCHAR PlayerRoyal)
+void UCheckersRules::GenerateNextAdjacentMovesForPiece(const FString& Board, const bool IsPlayer1,
+	const TCHAR PlayerPawn, const TCHAR PlayerRoyal, const uint8 PieceIndex)
 {
-    for (uint8 Index = 0; Index < BoardCellCount; Index++)
-    {
-	    if (Board[Index] == PlayerPawn || Board[Index] == PlayerRoyal)
-	    {
-	        // Calculate forward Indexes near piece.
-	        const uint8 FwdLeftIndex = IsPlayer1 ? NorthWestGet(Index) : SouthEastGet(Index);
-	        const uint8 FwdRightIndex = IsPlayer1 ? NorthEastGet(Index) : SouthWestGet(Index);
+	if (Board[PieceIndex] == PlayerPawn || Board[PieceIndex] == PlayerRoyal)
+	{
+		// Calculate forward Indexes near piece.
+		const uint8 FwdLeftIndex = IsPlayer1 ? NorthWestGet(PieceIndex) : SouthEastGet(PieceIndex);
+		const uint8 FwdRightIndex = IsPlayer1 ? NorthEastGet(PieceIndex) : SouthWestGet(PieceIndex);
 
-	        // Check if piece can move to an adjacent cell.
-	        if (FwdLeftIndex != OffBoard && Board[FwdLeftIndex] == Empty)
-	        {
-	            // Make the move on a new board.
-	        	FString NewBoard = Board;
-	        	AssignNewBoardFromMove(NewBoard, Index, FwdLeftIndex);
-	            // Add the new board to next possible boards.
-	        	TransitionMoves.MoveIndices.Emplace(FwdLeftIndex);
-	            PossibleTurnMovements.Emplace(TransitionMoves);
-	            NextPossibleBoards.Emplace(NewBoard);
-	        }
-	        if (FwdRightIndex != OffBoard && Board[FwdRightIndex] == Empty) {
-	            FString NewBoard = Board;
-				AssignNewBoardFromMove(NewBoard, Index, FwdRightIndex);
-	        	TransitionMoves.MoveIndices.Emplace(FwdRightIndex);
-	        	PossibleTurnMovements.Emplace(TransitionMoves);
-	            NextPossibleBoards.Emplace(NewBoard);
-	        }
-	        // Check for king moves.
-	        if (Board[Index] == PlayerRoyal)
-	        {
-	            const uint8 BackLeftIndex = IsPlayer1 ? SouthWestGet(Index) : NorthEastGet(Index);
-	            const uint8 BackRightIndex = IsPlayer1 ? SouthEastGet(Index) : NorthWestGet(Index);
-	            if (BackLeftIndex != OffBoard && Board[BackLeftIndex] == Empty)
-	            {
-	                FString NewBoard = Board;
-	            	AssignNewBoardFromMove(NewBoard, Index, BackLeftIndex);
-	            	TransitionMoves.MoveIndices.Emplace(BackLeftIndex);
-	                PossibleTurnMovements.Emplace(TransitionMoves);
-	                NextPossibleBoards.Emplace(NewBoard);
-	            }
-	            if (BackRightIndex != OffBoard && Board[BackRightIndex] == Empty)
-	            {
-	                FString NewBoard = Board;
-	            	AssignNewBoardFromMove(NewBoard, Index, BackRightIndex);
-					TransitionMoves.MoveIndices.Emplace(BackRightIndex);
-	            	PossibleTurnMovements.Emplace(TransitionMoves);
-	                NextPossibleBoards.Emplace(NewBoard);
-	            }
-	        }
-	    }
+		// Check if piece can move to an adjacent cell.
+		if (FwdLeftIndex != OffBoard && Board[FwdLeftIndex] == Empty)
+		{
+			// Make the move on a new board.
+			FString NewBoard = Board;
+			UpdateBoardFromMove(NewBoard, PieceIndex, FwdLeftIndex);
+			// Add the new board to next possible boards.
+			TransitionMoves.ActionIndices.Emplace(FwdLeftIndex);
+			PossibleTurnMovements.Emplace(TransitionMoves);
+			NextPossibleBoards.Emplace(NewBoard);
+			TransitionMoves.ActionIndices.Reset();
+		}
+		if (FwdRightIndex != OffBoard && Board[FwdRightIndex] == Empty) {
+			FString NewBoard = Board;
+			UpdateBoardFromMove(NewBoard, PieceIndex, FwdRightIndex);
+			TransitionMoves.ActionIndices.Emplace(FwdRightIndex);
+			PossibleTurnMovements.Emplace(TransitionMoves);
+			NextPossibleBoards.Emplace(NewBoard);
+			TransitionMoves.ActionIndices.Reset();
+		}
+		// Check for king moves.
+		if (Board[PieceIndex] == PlayerRoyal)
+		{
+			const uint8 BackLeftIndex = IsPlayer1 ? SouthWestGet(PieceIndex) : NorthEastGet(PieceIndex);
+			const uint8 BackRightIndex = IsPlayer1 ? SouthEastGet(PieceIndex) : NorthWestGet(PieceIndex);
+			if (BackLeftIndex != OffBoard && Board[BackLeftIndex] == Empty)
+			{
+				FString NewBoard = Board;
+				UpdateBoardFromMove(NewBoard, PieceIndex, BackLeftIndex);
+				TransitionMoves.ActionIndices.Emplace(BackLeftIndex);
+				PossibleTurnMovements.Emplace(TransitionMoves);
+				NextPossibleBoards.Emplace(NewBoard);
+				TransitionMoves.ActionIndices.Reset();
+			}
+			if (BackRightIndex != OffBoard && Board[BackRightIndex] == Empty)
+			{
+				FString NewBoard = Board;
+				UpdateBoardFromMove(NewBoard, PieceIndex, BackRightIndex);
+				TransitionMoves.ActionIndices.Emplace(BackRightIndex);
+				PossibleTurnMovements.Emplace(TransitionMoves);
+				NextPossibleBoards.Emplace(NewBoard);
+				TransitionMoves.ActionIndices.Reset();
+			}
+		}
 	}
 }
 
-void UCheckersRules::AssignNewBoardFromMove(FString& OutBoard, bool& OutPieceWasPromoted, const uint8 OriginIndex,const uint8 DestinationIndex,
-		const uint8 OpponentIndex)
+void UCheckersRules::EmplaceAllAdjacentMoves(const FString& Board, const bool IsPlayer1,
+                                             const TCHAR PlayerPawn, const TCHAR PlayerRoyal)
+{
+    for (uint8 Index = 0; Index < BoardCellCount; Index++)
+    {
+	    GenerateNextAdjacentMovesForPiece(Board, IsPlayer1, PlayerPawn, PlayerRoyal, Index);
+	}
+}
+
+void UCheckersRules::UpdateBoardFromMove(FString& OutBoard, bool& OutPieceWasPromoted,
+	const uint8 OriginIndex,const uint8 DestinationIndex, const uint8 OpponentIndex)
 {
 	// Move piece to destination.
 	OutBoard[DestinationIndex] = OutBoard[OriginIndex];
 	OutBoard[OriginIndex] = Empty;
 	// Remove jumped opponent.
 	OutBoard[OpponentIndex] = Empty;
+	JumpedOpponents.ActionIndices.Emplace(OpponentIndex);
 	// Check if a pawn reached the last row and promote if necessary.
 	OutPieceWasPromoted = false;
 	if (OutBoard[DestinationIndex] == Man && DestinationIndex < KingPromotionMax) 
@@ -348,12 +485,20 @@ void UCheckersRules::AssignNewBoardFromMove(FString& OutBoard, bool& OutPieceWas
 	}
 }
 
-void UCheckersRules::AssignNewBoardFromMove(FString& OutBoard,
-	const uint8 OriginIndex,const uint8 DestinationIndex)
+void UCheckersRules::UpdateBoardFromMove(FString& OutBoard, const uint8 OriginIndex,const uint8 DestinationIndex)
 {
 	// Move piece to destination.
 	OutBoard[DestinationIndex] = OutBoard[OriginIndex];
 	OutBoard[OriginIndex] = Empty;
+	// Promote piece if necessary.
+	if (OutBoard[DestinationIndex] == Man && DestinationIndex < KingPromotionMax) 
+	{
+		OutBoard[DestinationIndex] = King;
+	}
+	if (OutBoard[DestinationIndex] == Woman && DestinationIndex > QueenPromotionMin) 
+	{
+		OutBoard[DestinationIndex] = Queen;
+	}
 }
 
 uint8 UCheckersRules::NorthWestGet(uint8 Index)
@@ -631,24 +776,28 @@ float UCheckersRules::GetWinProbability(const FString& Board, const bool IsPlaye
 	return Prediction;
 }
 
-uint8 UCheckersRules::DeriveMovements(const FString& LastBoard, const FString& NextBoard, const bool IsPlayer1,
-	TArray<uint8>& OutMovements)
+uint8 UCheckersRules::DeriveMovements(const FString& LastBoard, const FString& ChosenNextBoard, const bool IsPlayer1,
+	uint8& ChosenTurnIndex)
 {
-	if (LastBoard.Len() == 0 || NextBoard.Len() == 0){ return OffBoard; }
+	if (LastBoard.Len() != BoardCellCount || ChosenNextBoard.Len() != BoardCellCount){ return OffBoard; }
 	
 	const TCHAR ActivePawn = IsPlayer1? Man : Woman;
 	const TCHAR ActiveRoyal = IsPlayer1? King : Queen;
 	uint8 PieceOrigin = OffBoard;
-	// Find each piece on the board belonging to the active player.
-	// If any piece is not on the next board (at the same index), it's the origin.
-	// If all pieces are in the same place, then a piece jumped in a circle.
-	// In this case, the origin is the same as the final destination.
-	// Try to find the origin. 
+
+	/*
+	 * Find each piece on the board belonging to the active player.
+	 * If any piece is not on the next board (at the same index), it's the origin.
+	 * If all pieces are in the same place, then a piece jumped in a circle.
+	 * In this case, the origin is the same as the final destination.		
+	*/
+	
+	// Try to find the origin via a board difference. 
 	for (uint8 i = 0; i < BoardCellCount; i++)
 	{
 		if (LastBoard[i] == ActivePawn || LastBoard[i] == ActiveRoyal)
 		{
-			if (LastBoard[i] != NextBoard[i])   
+			if (LastBoard[i] != ChosenNextBoard[i])   
 			{
 				PieceOrigin = i;
 				break;
@@ -659,18 +808,15 @@ uint8 UCheckersRules::DeriveMovements(const FString& LastBoard, const FString& N
 	uint8 Index = 0;
 	for (const FString& Board : NextPossibleBoards)
 	{
-		if (Board == NextBoard)
+		if (Board == ChosenNextBoard)
 		{
 			if (PieceOrigin == OffBoard)
 			{
-				PieceOrigin = PossibleTurnMovements[Index].MoveIndices.Last(); 
+				PieceOrigin = PossibleTurnMovements[Index].ActionIndices.Last(); 
 			}
 			// This works because NextPossibleBoards and PossibleTurnMovements are in the same order,
 			// so the index of next boards matches the index of next movements.
-			for (const uint8 MoveIndex : PossibleTurnMovements[Index].MoveIndices)
-			{
-				OutMovements.Emplace(MoveIndex);
-			}
+			ChosenTurnIndex = Index;
 			break;
 		}
 		++Index;

@@ -7,7 +7,7 @@ TObjectPtr<USearchNode> SelectNode(const TObjectPtr<USearchNode> RootNode, const
 {
 	float BestScore = 0.0f;
 	TObjectPtr<USearchNode> BestChild;
-	TObjectPtr<USearchNode> SelectedNode = RootNode->Clone();
+	TObjectPtr<USearchNode> SelectedNode = RootNode;
 	uint32 Depth = SelectedNode->Depth;
 
 	// If the selected node has children, find the best descendant.
@@ -18,7 +18,7 @@ TObjectPtr<USearchNode> SelectNode(const TObjectPtr<USearchNode> RootNode, const
 			if (Child && Child->VisitCount > 0)
 			{
 				// Score child by below formula, adjusted for adversarial play. See end notes for more info.
-				const float  Predictor = ( 1 - Rules->GetWinProbability(Child->Board, Child->bIsPlayer1));
+				const float  Predictor = ( 1.0f - Rules->GetWinProbability(Child->Board, Child->bIsPlayer1));
 				const float ChildScore = ( 
 					(static_cast<float>(Child->SumValue) / Child->VisitCount) +
 					(Predictor * FormulaConstant *
@@ -31,23 +31,30 @@ TObjectPtr<USearchNode> SelectNode(const TObjectPtr<USearchNode> RootNode, const
 				}
 			}
 		}
-		// Continue search under best child, and use the LRU children getter, to record using this child.
-		SelectedNode = BestChild ? BestChild : SelectedNode->Children[0]; 
-		BestScore = 0.0f;
-		BestChild = nullptr;
-		Depth++;
+		// If best child found, continue search under best child, or if none return the last selected node.
+		if (BestChild)
+		{
+			SelectedNode = BestChild; 
+			Depth++;
+			BestScore = 0.0f;
+			BestChild = nullptr;
+		}
+		else
+		{
+			break;
+		}
 	}
 	return SelectedNode;
 }
 
 /*
-The algorithm score above relies on the below formula:
+The algorithm score above relies on the below Predictive UCB formula:
 
 AverageValue + ( Predictor * Constant * Sqrt( ln N / n ) )
 
 ---
 
-AvgValue:  node.sumValue / node.visitCount
+AverageValue:  node.sumValue / node.visitCount
 
 P: Predicted probability that this node is a winner. 
 

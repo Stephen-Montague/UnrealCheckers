@@ -12,9 +12,11 @@ void Expand(const TObjectPtr<USearchNode> Node, const TObjectPtr<UCheckersRules>
 		Node->Children.Reserve(Rules->NextPossibleBoards.Num());
 		for (const FString& Board : Rules->NextPossibleBoards)
 		{
-			const TObjectPtr<USearchNode> Child = NewObject<USearchNode>();
-			Child->Init(Board, !Node->bIsPlayer1, 0, 0, Node);
-			Node->Children.Emplace(Child);
+			if (TObjectPtr<USearchNode> Child = NewObject<USearchNode>())
+			{
+				Child->Init(Board, !Node->bIsPlayer1, 0, 0, Node);
+				Node->Children.Emplace(Child);
+			}
 		}
 	}
 	else

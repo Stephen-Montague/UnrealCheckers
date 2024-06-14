@@ -20,14 +20,20 @@ public:
 		const uint32 InVisitCount = 0, const uint32 InSumValue = 0,
 		TObjectPtr<USearchNode> const InParent = nullptr, bool InIsProvenWinner = false);
 
-	TObjectPtr<USearchNode> Clone();
-	
+	UPROPERTY()
 	FString Board;
+
 	bool bIsPlayer1;
 	uint32 VisitCount;
 	uint32 SumValue;
+
+	UPROPERTY()
 	TObjectPtr<USearchNode> Parent;
+
 	uint32 Depth; 
-	TArray<TObjectPtr<USearchNode>> Children; 
+
+	UPROPERTY()
+	TArray<TObjectPtr<USearchNode>> Children;
+	
 	bool bIsProvenWinner;
 };

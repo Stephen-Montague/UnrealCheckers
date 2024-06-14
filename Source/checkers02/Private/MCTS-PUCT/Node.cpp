@@ -15,16 +15,3 @@ void USearchNode::Init(const FString& InBoard, const bool InIsPlayer1, const uin
 	Children.Reset(); 
 	bIsProvenWinner = InIsProvenWinner;
 }
-
-TObjectPtr<USearchNode> USearchNode::Clone()
-{
-	const TObjectPtr<USearchNode> Clone = NewObject<USearchNode>();
-	Clone->Board = Board;
-	Clone->bIsPlayer1 = bIsPlayer1;
-	Clone->VisitCount = VisitCount;
-	Clone->SumValue = SumValue;
-	Clone->Parent = Parent;
-	Clone->Children = Children;
-	Clone->bIsProvenWinner = bIsProvenWinner;
-	return Clone;
-}

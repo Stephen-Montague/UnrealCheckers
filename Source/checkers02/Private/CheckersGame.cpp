@@ -27,20 +27,21 @@ bool ACheckersGame::IsOver() const
 
 void ACheckersGame::LogBoard()
 {
-	if (Board.Len() != BoardWidth * BoardHeight){ return; }
+	if (!Rules) { return; }
+	if (Board.Len() != Rules->BoardCellCount){ return; }
 	
 	FString LineToPrint = TEXT("");
-	for (int32 y = BoardHeight - 1; y > -1; y--)
+	for (uint32 y = 0; y < Rules->BoardHeight; y++)
 	{
-		for (int32 x = 0; x < BoardWidth; x++)
+		for (uint32 x = 0; x < Rules->BoardWidth; x++)
 		{
-			const int32 CellIndex = (y * BoardWidth) + x;
+			const uint32 CellIndex = (y * Rules->BoardWidth) + x;
 			if (y % 2 == 1)
 			{
 				LineToPrint += Board[CellIndex];
 				LineToPrint += TEXT(" ");
 			}
-			else if (x % BoardWidth == 0)
+			else if (x % Rules->BoardWidth == 0)
 			{
 				LineToPrint += TEXT(" ");
 				LineToPrint += Board[CellIndex];
@@ -54,8 +55,8 @@ void ACheckersGame::LogBoard()
 		}
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(y, 8.0f, FColor::Yellow,
-				FString::Printf(TEXT("%s"), *LineToPrint));
+			GEngine->AddOnScreenDebugMessage(INDEX_NONE, 8.0f, FColor::Yellow,
+				FString::Printf(TEXT("%s"), *LineToPrint), false);
 		}
 		LineToPrint = TEXT("");
 	}

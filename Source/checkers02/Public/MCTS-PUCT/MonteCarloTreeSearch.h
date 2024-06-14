@@ -31,7 +31,9 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UCheckersRules> SimulationRules;
 
+	UPROPERTY()
 	TObjectPtr<USearchNode> RootNode;
+
 	const double SearchTime = 1.8;
 	double EndSearchTime;
 };

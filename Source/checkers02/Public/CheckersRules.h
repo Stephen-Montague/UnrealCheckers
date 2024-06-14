@@ -23,7 +23,7 @@ struct FTransitionMoves
 {
 	GENERATED_BODY()
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	TArray<uint8> MoveIndices;
+	TArray<uint8> ActionIndices;
 };
 
 /**
@@ -40,12 +40,23 @@ public:
 	
 	static void AssignInitialBoard(FString& OutInitialBoard)
 	{
-		OutInitialBoard = FString("WWWWWWWWWWWW++++++++MMMMMMMMMMMM");
+		OutInitialBoard = TEXT("WWWWWWWWWWWW++++++++MMMMMMMMMMMM");
 	}
 
-	UFUNCTION(BlueprintCallable)
+	void ResetMembers();
+
+	/* Generate next possible boards and transition data for all pieces. This is useful for an AI choosing a move. */
+	UFUNCTION(BlueprintCallable, meta = (ReturnDisplayName = "WasGenerated"))
 	bool GenerateNextPossibleBoards(const FString& Board, const bool IsPlayer1);
 
+	/* Generate next possible boards for a single piece. This is useful for a player holding a piece. */
+	UFUNCTION(BlueprintCallable, meta = (ReturnDisplayName = "WasGenerated"))
+	bool GenerateNextPossibleBoardsForPiece(const FString& Board, const bool bIsPlayer1, const int32 PieceIndex, bool& bHasCapture);
+
+	/* Generate next possible origins for all legal moves. This is useful to highlight options for a human player. */
+	UFUNCTION(BlueprintCallable, meta = (ReturnDisplayName = "WasGenerated"))
+	bool GenerateNextPossibleOrigins(const FString& Board, const bool bIsPlayer1);
+	
 	EWinner GetWinner() const { return Winner; }
 	
 	/** An eval function to guess the future winner.
@@ -57,11 +68,17 @@ public:
 	static float GetWinProbability(const FString& Board, const bool IsPlayer1);
 
 	/* Returns a board index of the move origin and fills an out-parameter array with all movements. */
-	uint8 DeriveMovements(const FString& LastBoard, const FString& NextBoard, const bool IsPlayer1, TArray<uint8>& OutMovements);	
+	uint8 DeriveMovements(const FString& LastBoard, const FString& ChosenNextBoard, const bool IsPlayer1, uint8& ChosenTurnIndex);	
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TArray<FString> NextPossibleBoards;
-	
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<FString> NextPossibleOrigins;
+
+	constexpr static uint8 BoardCellCount = 32;
+	constexpr static uint8 BoardHeight = 8;
+	constexpr static uint8 BoardWidth = 4;
 	constexpr static TCHAR Man = 'M';  // Player1 pawn.
 	constexpr static TCHAR King = 'K';  // Player1 royal.
 	constexpr static TCHAR Woman = 'W'; // Player2 pawn.
@@ -69,31 +86,37 @@ public:
 	constexpr static TCHAR Empty = '+';
 	
 private:
-	static bool IsJumpPossibleOnBoard(const FString& Board, const bool IsPlayer1,
+	static bool IsJumpPossibleOnBoard(const FString& Board, const bool bIsPlayer1,
 	                           const TCHAR PlayerPawn, const TCHAR PlayerRoyal,
 	                           const TCHAR OpponentPawn, const TCHAR OpponentRoyal);
 
 	static bool IsJumpPossibleForPiece(const FString& Board, const bool IsPlayer1, const uint8 PieceIndex,
 		const TCHAR PlayerRoyal, const TCHAR OpponentPawn, const TCHAR OpponentRoyal);
 	
-	void EmplaceAllJumpMoves(const FString& Board, const bool IsPlayer1,
-		const TCHAR PlayerPawn, const TCHAR PlayerRoyal,
-		const TCHAR OpponentPawn, const TCHAR OpponentRoyal);
+	static bool IsAdjacentMovePossibleForPiece(const FString& Board, bool IsPlayer1, uint8 PieceIndex, TCHAR PlayerRoyal);
 
-	void GenerateNextJumpBoards(const FString& Board, const uint8 PieceIndex, const bool IsPlayer1,
+	void EmplaceAllJumpMoves(const FString& Board, const bool IsPlayer1,
+	                         const TCHAR PlayerPawn, const TCHAR PlayerRoyal,
+	                         const TCHAR OpponentPawn, const TCHAR OpponentRoyal);
+
+	void GenerateNextJumpBoardsForPiece(const FString& Board, const uint8 PieceIndex, const bool IsPlayer1,
 		const TCHAR PlayerPawn, const TCHAR PlayerRoyal,
 		const TCHAR OpponentPawn, const TCHAR OpponentRoyal);
+	
+	void GenerateNextAdjacentMovesForPiece(const FString& Board, bool IsPlayer1, TCHAR PlayerPawn, TCHAR PlayerRoyal,
+	                                       const uint8 PieceIndex);
 
 	void EmplaceAllAdjacentMoves(const FString& Board, const bool IsPlayer1, const TCHAR PlayerPawn, const TCHAR PlayerRoyal);
 
-	static void AssignNewBoardFromMove(FString& OutBoard, bool& OutPieceWasPromoted,
+	void UpdateBoardFromMove(FString& OutBoard, bool& OutPieceWasPromoted,
 		const uint8 OriginIndex,const uint8 DestinationIndex, const uint8 OpponentIndex);
 
-	static void AssignNewBoardFromMove(FString& OutBoard, const uint8 OriginIndex,const uint8 DestinationIndex);
+	static void UpdateBoardFromMove(FString& OutBoard, const uint8 OriginIndex,const uint8 DestinationIndex);
 
-	/** Functions to find an index near a piece.
-	 *  Returns the described index near a given index.
-	 *  Returns 255 (uint8 max) if off the board.
+	/**
+	 * Functions to find a board index near a piece.
+	 * Returns the described index near a piece index.
+	 * If location is off board, returns 255 (uint8 max).
 	 */
 	static uint8 NorthWestGet(uint8 Index);
 	static uint8 NorthEastGet(uint8 Index);
@@ -107,14 +130,27 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
 	EWinner Winner;
 
-
+	/* An array of transition moves, for all pieces or a single piece, depending on the function call.
+	 * Each element is a list of transition moves, for all movements to a final destination. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
 	TArray<FTransitionMoves> PossibleTurnMovements;
 
+	/* Same as above, except each element is a list of captured piece indices, if any exist. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
+	TArray<FTransitionMoves> PossibleTurnCaptures;
+
+	/* Contains an array of board indices, to record piece movements. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
 	FTransitionMoves TransitionMoves;
+
+	/* Contains an array of board indices, to record pieces captured. */	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
+	FTransitionMoves JumpedOpponents;
+
+	/* An array of board indices for all possible movement origins. */	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, meta=(AllowPrivateAccess="true"))
+	TArray<uint8> PossibleOrigins; 
 	
-	constexpr static uint8 BoardCellCount = 32;
 	constexpr static uint8 KingPromotionMax = 4; // Max index, exclusive, of the top row.
 	constexpr static uint8 QueenPromotionMin = 27; // Min index, exclusive, of the bottom row. 
 	constexpr static uint8 OffBoard = 255;

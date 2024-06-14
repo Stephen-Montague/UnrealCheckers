@@ -41,10 +41,6 @@ private:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(AllowPrivateAccess="true"))
 	FString LogName = TEXT("Checkers");
-
-	const int32 BoardHeight = 8;
-	
-	const int32 BoardWidth = 4;
 	
 	bool bHasNextPossibleBoard;
 
